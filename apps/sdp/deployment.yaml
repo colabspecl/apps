@@ -1,19 +1,29 @@
 ---
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Service
 metadata:
-  name: shadowpulse-pvc
+  name: sdr-headless
+  labels:
+    app: sdr
+    app.watchgrid.io/name: sdp
+    app.watchgrid.io/managed-by: watchgrid
+    app.watchgrid.io/component: sdr
 spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 10Mi
-  storageClassName: local-path
-  volumeMode: Filesystem
+  clusterIP: None
+  selector:
+    app: sdr
+    app.watchgrid.io/name: sdp
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+    - name: fft
+      port: 5555
+      targetPort: 5555
 
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: sdr
   labels:
@@ -22,12 +32,10 @@ metadata:
     app.watchgrid.io/managed-by: watchgrid
     app.watchgrid.io/component: sdr
 spec:
+  serviceName: sdr-headless
   replicas: 1
-
-  # avoid overlap so device/ports aren't double-bound
-  strategy:
-    type: Recreate
-
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       app: sdr
@@ -53,22 +61,38 @@ spec:
               value: "HackRF"
           ports:
             - containerPort: 8000
-              hostPort: 8000     # <-- bind node port 8000
+              hostPort: 8000          # exposes node:8000 for WireGuard curl
               name: http
             - containerPort: 5555
-              name: fft          # internal only
+              name: fft               # internal only
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 20
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh","-c","sleep 5"]
+                command: ["/bin/sh","-c","sleep 5"]  # let sockets/USB release
           securityContext:
-            sysctls:
-              - name: net.ipv4.tcp_keepalive_time
-                value: "60"
-              - name: net.ipv4.tcp_keepalive_intvl
-                value: "30"
-              - name: net.ipv4.tcp_keepalive_probes
-                value: "4"
             runAsUser: 0
             privileged: true
             capabilities:
@@ -83,9 +107,15 @@ spec:
           hostPath:
             path: /dev/bus/usb
             type: Directory
-        - name: shadowpulse-storage
-          persistentVolumeClaim:
-            claimName: shadowpulse-pvc
+  volumeClaimTemplates:
+    - metadata:
+        name: shadowpulse-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 10Mi
 
 ---
 apiVersion: v1
