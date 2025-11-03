@@ -19,6 +19,7 @@
       "description": "Type of SDR: cwsim, rtlsdr, hackrf",
       "default": "cwsim",
       "required": true
-    },
+    }
+  ],
   "notes": "This application requires a connected HackRF/RTL-SDR USB device for radio spectrum analysis."
 }
