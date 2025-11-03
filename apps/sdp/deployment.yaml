@@ -37,6 +37,8 @@ spec:
         app.watchgrid.io/managed-by: watchgrid
         app.watchgrid.io/component: sdr
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: sdr
           image: colabspecl/sdr:latest
