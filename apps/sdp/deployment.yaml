@@ -4,8 +4,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: shadowpulse-pvc
 spec:
-  accessModes:
-    - ReadWriteOnce
+  accessModes: ["ReadWriteOnce"]
   resources:
     requests:
       storage: 10Mi
@@ -24,8 +23,11 @@ metadata:
     app.watchgrid.io/component: sdr
 spec:
   replicas: 1
+
+  # avoid overlap so device/ports aren't double-bound
   strategy:
     type: Recreate
+
   selector:
     matchLabels:
       app: sdr
@@ -37,12 +39,8 @@ spec:
         app.watchgrid.io/name: sdp
         app.watchgrid.io/managed-by: watchgrid
         app.watchgrid.io/component: sdr
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/sdr: unconfined
     spec:
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
-      terminationGracePeriodSeconds: 45
+      terminationGracePeriodSeconds: 60
       containers:
         - name: sdr
           image: colabspecl/sdr:latest
@@ -55,37 +53,24 @@ spec:
               value: "HackRF"
           ports:
             - containerPort: 8000
+              hostPort: 8000     # <-- bind node port 8000
               name: http
             - containerPort: 5555
-              name: fft
-
-          # Give the app time to release HackRF / ZMQ sockets before kill -9
+              name: fft          # internal only
           lifecycle:
             preStop:
               exec:
-                command:
-                  # Try graceful shutdown if your app supports it; otherwise short sleep
-                  - /bin/sh
-                  - -c
-                  - |
-                    echo "PreStop: giving SDR stack time to release device and ports"
-                    # If your app has a shutdown endpoint, call it here, e.g.:
-                    # curl -s http://127.0.0.1:8000/shutdown || true
-                    sleep 5
-
+                command: ["/bin/sh","-c","sleep 5"]
           securityContext:
             runAsUser: 0
             privileged: true
             capabilities:
-              add:
-                - NET_ADMIN
-
+              add: ["NET_ADMIN"]
           volumeMounts:
             - name: usbdev
               mountPath: /dev/bus/usb
             - name: shadowpulse-storage
               mountPath: /app/data
-
       volumes:
         - name: usbdev
           hostPath:
@@ -109,6 +94,7 @@ spec:
   selector:
     app: sdr
     app.watchgrid.io/name: sdp
+  type: ClusterIP
   ports:
     - name: http
       port: 8000
@@ -116,4 +102,3 @@ spec:
     - name: fft
       port: 5555
       targetPort: 5555
-  type: ClusterIP
