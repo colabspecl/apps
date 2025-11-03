@@ -3,7 +3,6 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: shadowpulse-pvc
-  # namespace: default   # uncomment & set if you're not in "default"
 spec:
   accessModes:
     - ReadWriteOnce
@@ -25,6 +24,8 @@ metadata:
     app.watchgrid.io/component: sdr
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: sdr
@@ -36,9 +37,12 @@ spec:
         app.watchgrid.io/name: sdp
         app.watchgrid.io/managed-by: watchgrid
         app.watchgrid.io/component: sdr
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/sdr: unconfined
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 45
       containers:
         - name: sdr
           image: colabspecl/sdr:latest
@@ -54,17 +58,34 @@ spec:
               name: http
             - containerPort: 5555
               name: fft
+
+          # Give the app time to release HackRF / ZMQ sockets before kill -9
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  # Try graceful shutdown if your app supports it; otherwise short sleep
+                  - /bin/sh
+                  - -c
+                  - |
+                    echo "PreStop: giving SDR stack time to release device and ports"
+                    # If your app has a shutdown endpoint, call it here, e.g.:
+                    # curl -s http://127.0.0.1:8000/shutdown || true
+                    sleep 5
+
           securityContext:
             runAsUser: 0
             privileged: true
             capabilities:
               add:
                 - NET_ADMIN
+
           volumeMounts:
             - name: usbdev
               mountPath: /dev/bus/usb
             - name: shadowpulse-storage
               mountPath: /app/data
+
       volumes:
         - name: usbdev
           hostPath:
@@ -92,4 +113,7 @@ spec:
     - name: http
       port: 8000
       targetPort: 8000
+    - name: fft
+      port: 5555
+      targetPort: 5555
   type: ClusterIP
