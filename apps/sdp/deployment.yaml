@@ -20,7 +20,14 @@ spec:
         app.watchgrid.io/name: sdp
         app.watchgrid.io/managed-by: watchgrid
         app.watchgrid.io/component: sdr
+      annotations:
+        # Compose: security_opt: apparmor:unconfined
+        container.apparmor.security.beta.kubernetes.io/sdr: unconfined
     spec:
+      # Compose: devices + group_add plugdev
+      securityContext:
+        # plugdev commonly GID 46 on Debian/Ubuntu; adjust for your host if different
+        supplementalGroups: [46]
       containers:
         - name: sdr
           image: colabspecl/sdr:latest   # replace if you push your own build
@@ -30,7 +37,11 @@ spec:
             - name: PYTHONUNBUFFERED
               value: "1"
             - name: SDR_DEVICE
-              value: cwsim
+              value: rtlsdr
+              # - name: SDR_DEVICE
+              #   value: hackrf
+              # - name: SDR_DEVICE
+              #   value: cwsim
           ports:
             - containerPort: 8000
               name: http
@@ -57,7 +68,10 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
           securityContext:
-            privileged: true
+            # Compose: cap_add: [SYS_RAWIO]; no full privileged container
+            allowPrivilegeEscalation: false
+            capabilities:
+              add: ["SYS_RAWIO"]
           volumeMounts:
             - name: usbdev
               mountPath: /dev/bus/usb
