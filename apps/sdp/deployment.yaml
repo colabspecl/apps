@@ -36,8 +36,6 @@ spec:
         app.watchgrid.io/name: sdp
         app.watchgrid.io/managed-by: watchgrid
         app.watchgrid.io/component: sdr
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/sdr: unconfined
     spec:
       containers:
         - name: sdr
