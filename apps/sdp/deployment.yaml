@@ -21,19 +21,18 @@ spec:
         app.watchgrid.io/managed-by: watchgrid
         app.watchgrid.io/component: sdr
       annotations:
-        # Allow USB device access similar to docker-compose: security_opt: apparmor:unconfined
         container.apparmor.security.beta.kubernetes.io/sdr: unconfined
     spec:
       containers:
         - name: sdr
-          image: colabspecl/sdr:latest   # replace if you push your own build
+          image: colabspecl/sdr:latest
           imagePullPolicy: Always
           workingDir: /app
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
             - name: SDR_DEVICE
-              value: "HackRF"   # match working manifest casing
+              value: "HackRF"
           ports:
             - containerPort: 8000
               name: http
@@ -43,36 +42,44 @@ spec:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 20
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
           startupProbe:
             httpGet:
               path: /health
               port: 8000
-            # Compose start_period: 30s approximated here
             initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 3
+            periodSeconds: 15
+            failureThreshold: 20
           securityContext:
             runAsUser: 0
-            privileged: true              # required for HackRF/libusb access
+            privileged: true
             capabilities:
               add:
-                - NET_ADMIN               # mirrored from your working manifest
+                - NET_ADMIN
           volumeMounts:
             - name: usbdev
               mountPath: /dev/bus/usb
+            - name: shadowpulse-storage
+              mountPath: /app/data
       volumes:
         - name: usbdev
           hostPath:
             path: /dev/bus/usb
             type: Directory
+        - name: shadowpulse-storage
+          persistentVolumeClaim:
+            claimName: shadowpulse-pvc
 
 ---
 apiVersion: v1
@@ -96,3 +103,32 @@ spec:
       port: 5555
       targetPort: 5555
   type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: shadowpulse-pv
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 10Mi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/shadowpulse-data
+  persistentVolumeReclaimPolicy: Retain
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shadowpulse-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+  volumeName: shadowpulse-pv
