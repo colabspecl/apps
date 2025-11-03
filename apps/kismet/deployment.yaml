@@ -19,14 +19,9 @@ data:
     set -e
 
     # Create necessary directories
-    mkdir -p /var/lib/kismet
-    mkdir -p /var/log/kismet
+    mkdir -p /var/lib/kismet /var/log/kismet /etc/kismet /usr/local/etc/kismet
     chown -R root:root /var/lib/kismet
     chmod -R 755 /var/lib/kismet
-
-    # Ensure config dirs
-    mkdir -p /etc/kismet
-    mkdir -p /usr/local/etc/kismet
 
     # If a template was mounted, use it; otherwise create a basic file
     if [ -f "/opt/kismet-bootstrap/kismet.conf" ]; then
@@ -36,7 +31,7 @@ data:
     fi
 
     # Also copy any extra configs mounted to /usr/local/etc/kismet
-    if [ -d "/usr/local/etc/kismet" ] && compgen -G "/usr/local/etc/kismet/*.conf" > /dev/null; then
+    if [ -d "/usr/local/etc/kismet" ] && compgen -G "/usr/local/etc/kismet/*.conf" >/dev/null; then
       cp -f /usr/local/etc/kismet/*.conf /etc/kismet/ || true
     fi
 
@@ -49,12 +44,11 @@ data:
     done
 
     # Apply ENV-driven settings into /etc/kismet/kismet.conf
-    # Fallbacks: username=admin, password=admin, gps=false
-    KUSER="${KISMET_USERNAME:-admin}"
-    KPASS="${KISMET_PASSWORD:-admin}"
-    KGPS="${KISMET_GPS:-false}"
+    # Accept both legacy (KISMET_*) and new (HTTP_*/GPS) names
+    KUSER="${HTTP_USERNAME:-${KISMET_USERNAME:-admin}}"
+    KPASS="${HTTP_PASSWORD:-${KISMET_PASSWORD:-admin}}"
+    KGPS="${GPS:-${KISMET_GPS:-false}}"
 
-    # idempotent replace-or-append
     replace_or_set () {
       KEY="$1"; VAL="$2"; FILE="$3"
       if grep -qE "^[[:space:]]*${KEY}=" "$FILE"; then
@@ -70,15 +64,52 @@ data:
     replace_or_set httpd_port "2501" "$CFG"
     replace_or_set httpd_bind_address "0.0.0.0" "$CFG"
     replace_or_set gps "$KGPS" "$CFG"
+    replace_or_set remote_capture_listen "0.0.0.0" "$CFG"
+    replace_or_set remote_capture_port "3501" "$CFG"
 
-    # Ensure the 4 sources exist (wlan0..wlan3), add or comment out if missing
-    for IFACE in wlan0 wlan1 wlan2 wlan3; do
+    # === Sources handling ======================================================
+    # Remove existing source lines to avoid duplicates (active or commented)
+    sed -i '/^[[:space:]]*#\?source=/d' "$CFG"
+
+    add_or_comment_source_line () {
+      # $1 is a full Kismet source line, e.g. "source=wlan0:name=Source0,band24ghz=true"
+      LINE="$1"
+      # Extract iface right after "source=" until ':' or ',' or end
+      IFACE="$(printf '%s' "$LINE" | sed -n 's/.*source=\([^:,]*\).*$/\1/p')"
+      if [ -z "$IFACE" ]; then
+        echo "#$LINE" >> "$CFG"
+        return
+      fi
       if ip link show "$IFACE" >/dev/null 2>&1; then
-        grep -q "^source=${IFACE}$" "$CFG" || echo "source=${IFACE}" >> "$CFG"
+        echo "$LINE" >> "$CFG"
       else
-        grep -q "^#source=${IFACE}$" "$CFG" || echo "#source=${IFACE}" >> "$CFG"
+        echo "#$LINE" >> "$CFG"
+      fi
+    }
+
+    # Up to four configurable sources if provided (accept both with/without "source=" prefix)
+    for VAR in SOURCE0 SOURCE1 SOURCE2 SOURCE3; do
+      VAL="$(eval echo \${$VAR:-})"
+      if [ -n "$VAL" ]; then
+        if printf '%s' "$VAL" | grep -q '^source='; then
+          add_or_comment_source_line "$VAL"
+        else
+          add_or_comment_source_line "source=${VAL}"
+        fi
       fi
     done
+
+    # Fallback: if none provided, auto-detect wlan0..wlan3 with simple lines
+    if ! grep -q '^#\?source=' "$CFG"; then
+      for IFACE in wlan0 wlan1 wlan2 wlan3; do
+        if ip link show "$IFACE" >/dev/null 2>&1; then
+          echo "source=${IFACE}" >> "$CFG"
+        else
+          echo "#source=${IFACE}" >> "$CFG"
+        fi
+      done
+    fi
+    # =========================================================================
 
     # Start Kismet
     exec /usr/local/bin/kismet --no-ncurses-wrapper
@@ -88,17 +119,19 @@ data:
     configdir=/usr/local/etc/kismet
     helper_binary_path=/usr/local/bin
 
-    # Web interface settings
+    # Web interface settings (overridden at startup)
     httpd_username=admin
     httpd_password=admin
     httpd_port=2501
     httpd_home=/usr/share/kismet
     httpd_bind_address=0.0.0.0
 
-    ouifile=/usr/share/kismet/manuf
+    # Remote capture (overridden at startup)
     remote_capture_listen=0.0.0.0
     remote_capture_port=3501
     remote_capture_allow=*
+
+    # Defaults
     log_types=kismet,pcapng,pcap,wiglecsv,nxpcap
     stream_datasource=true
     httpd_allow_cors=true
@@ -112,10 +145,10 @@ data:
     track_device_seenby_limit=64
     track_device_phy_limit=128
 
-    source=wlan0
-    source=wlan1
-    source=wlan2
-    source=wlan3
+    # Sources are injected by start.sh (active or commented based on iface presence)
+    # Examples:
+    # source=wlan0:name=Source0,band24ghz=true
+    # source=wlan1:name=Source1,band5ghz=true,band6ghz=true
 
 ---
 apiVersion: apps/v1
@@ -155,18 +188,35 @@ spec:
             - containerPort: 3501
               name: remote-capture
           env:
-            - name: KISMET_USERNAME
+            # Credentials (supports either HTTP_* or legacy KISMET_* via start.sh)
+            - name: HTTP_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: kismet-credentials
                   key: username
-            - name: KISMET_PASSWORD
+            - name: HTTP_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: kismet-credentials
                   key: password
-            - name: KISMET_GPS
+
+            # GPS as string: "false" or "serial:device=/dev/ttyUSB0,baud=9600"
+            - name: GPS
               value: "false"
+
+            # Optional per-source config (full Kismet source strings).
+            # Examples:
+            #   "source=wlan0:name=Source0,band24ghz=true"
+            #   "wlan1:name=Source1,band5ghz=true,band6ghz=true"
+            - name: SOURCE0
+              value: ""   # override via app.json / orchestrator
+            - name: SOURCE1
+              value: ""
+            - name: SOURCE2
+              value: ""
+            - name: SOURCE3
+              value: ""
+
           securityContext:
             privileged: true
             capabilities:
