@@ -59,14 +59,14 @@
       "name": "SOURCE0",
       "type": "string",
       "description": "Kismet source definition (e.g., \"source=wlan0:name=Source0,band24ghz=true\").",
-      "default": "source=wlan0:name=wlan0,band24ghz=true",
+      "default": "source=wlan0:name=wlan0",
       "required": false
     },
     {
       "name": "SOURCE1",
       "type": "string",
       "description": "Kismet source definition (e.g., \"source=wlan1:name=Source1,band5ghz=true,band6ghz=true\").",
-      "default": "source=wlan1:name=wlan1,band5ghz=true,band6ghz=true",
+      "default": "source=wlan1:name=wlan1",
       "required": false
     },
     {
