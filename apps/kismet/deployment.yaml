@@ -1,0 +1,283 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kismet-credentials
+type: Opaque
+stringData:
+  username: "admin"     # change
+  password: "admin"     # change
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kismet-config
+data:
+  start.sh: |
+    #!/bin/bash
+    set -e
+
+    # Create necessary directories
+    mkdir -p /var/lib/kismet
+    mkdir -p /var/log/kismet
+    chown -R root:root /var/lib/kismet
+    chmod -R 755 /var/lib/kismet
+
+    # Ensure config dirs
+    mkdir -p /etc/kismet
+    mkdir -p /usr/local/etc/kismet
+
+    # If a template was mounted, use it; otherwise create a basic file
+    if [ -f "/opt/kismet-bootstrap/kismet.conf" ]; then
+      cp -f /opt/kismet-bootstrap/kismet.conf /etc/kismet/kismet.conf
+    elif [ ! -f "/etc/kismet/kismet.conf" ]; then
+      touch /etc/kismet/kismet.conf
+    fi
+
+    # Also copy any extra configs mounted to /usr/local/etc/kismet
+    if [ -d "/usr/local/etc/kismet" ] && compgen -G "/usr/local/etc/kismet/*.conf" > /dev/null; then
+      cp -f /usr/local/etc/kismet/*.conf /etc/kismet/ || true
+    fi
+
+    # Generate default configs if they don't exist (best-effort)
+    cd /usr/src/kismet 2>/dev/null && make forceconfigs DESTDIR=/ 2>/dev/null || true
+
+    # Ensure key configs exist
+    for conf in kismet.conf kismet_logging.conf kismet_memory.conf kismet_httpd.conf kismet_alerts.conf kismet_filter.conf; do
+      [ -f "/etc/kismet/$conf" ] || touch "/etc/kismet/$conf"
+    done
+
+    # Apply ENV-driven settings into /etc/kismet/kismet.conf
+    # Fallbacks: username=admin, password=admin, gps=false
+    KUSER="${KISMET_USERNAME:-admin}"
+    KPASS="${KISMET_PASSWORD:-admin}"
+    KGPS="${KISMET_GPS:-false}"
+
+    # idempotent replace-or-append
+    replace_or_set () {
+      KEY="$1"; VAL="$2"; FILE="$3"
+      if grep -qE "^[[:space:]]*${KEY}=" "$FILE"; then
+        sed -i "s|^[[:space:]]*${KEY}=.*|${KEY}=${VAL}|" "$FILE"
+      else
+        echo "${KEY}=${VAL}" >> "$FILE"
+      fi
+    }
+
+    CFG="/etc/kismet/kismet.conf"
+    replace_or_set httpd_username "$KUSER" "$CFG"
+    replace_or_set httpd_password "$KPASS" "$CFG"
+    replace_or_set httpd_port "2501" "$CFG"
+    replace_or_set httpd_bind_address "0.0.0.0" "$CFG"
+    replace_or_set gps "$KGPS" "$CFG"
+
+    # Ensure the 4 sources exist (wlan0..wlan3), add or comment out if missing
+    for IFACE in wlan0 wlan1 wlan2 wlan3; do
+      if ip link show "$IFACE" >/dev/null 2>&1; then
+        grep -q "^source=${IFACE}$" "$CFG" || echo "source=${IFACE}" >> "$CFG"
+      else
+        grep -q "^#source=${IFACE}$" "$CFG" || echo "#source=${IFACE}" >> "$CFG"
+      fi
+    done
+
+    # Start Kismet
+    exec /usr/local/bin/kismet --no-ncurses-wrapper
+
+  kismet.conf: |
+    # Basic Kismet configuration file (template; ENV will be applied by start.sh)
+    configdir=/usr/local/etc/kismet
+    helper_binary_path=/usr/local/bin
+
+    # Web interface settings
+    httpd_username=admin
+    httpd_password=admin
+    httpd_port=2501
+    httpd_home=/usr/share/kismet
+    httpd_bind_address=0.0.0.0
+
+    ouifile=/usr/share/kismet/manuf
+    remote_capture_listen=0.0.0.0
+    remote_capture_port=3501
+    remote_capture_allow=*
+    log_types=kismet,pcapng,pcap,wiglecsv,nxpcap
+    stream_datasource=true
+    httpd_allow_cors=true
+    server_uuid=auto
+    gps=false
+    channel_hop=true
+    split_source_hopping=true
+    packet_dedup_size=16384
+    packet_backlog_warning=512
+    packet_backlog_limit=1024
+    track_device_seenby_limit=64
+    track_device_phy_limit=128
+
+    source=wlan0
+    source=wlan1
+    source=wlan2
+    source=wlan3
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kismet
+  labels:
+    app: kismet
+    app.watchgrid.io/name: kismet
+    app.watchgrid.io/managed-by: watchgrid
+    app.watchgrid.io/component: kismet
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kismet
+      app.watchgrid.io/name: kismet
+  template:
+    metadata:
+      labels:
+        app: kismet
+        app.watchgrid.io/name: kismet
+        app.watchgrid.io/managed-by: watchgrid
+        app.watchgrid.io/component: kismet
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/kismet: unconfined
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: kismet
+          image: colabspecl/rcn-ksmt:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 2501
+              name: http
+            - containerPort: 3501
+              name: remote-capture
+          env:
+            - name: KISMET_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kismet-credentials
+                  key: username
+            - name: KISMET_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kismet-credentials
+                  key: password
+            - name: KISMET_GPS
+              value: "false"
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - SYS_ADMIN
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 2501
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 2501
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - name: kismet-config
+              mountPath: /opt/kismet-bootstrap
+            - name: kismet-var
+              mountPath: /var/lib/kismet
+            - name: kismet-log
+              mountPath: /var/log/kismet
+            - name: varrun
+              mountPath: /var/run
+            - name: dev
+              mountPath: /dev
+            - name: sysclassnet
+              mountPath: /sys/class/net
+              readOnly: true
+            - name: usbdev
+              mountPath: /dev/bus/usb
+            - name: net-tun
+              mountPath: /dev/net/tun
+          command: ["/bin/bash", "/opt/kismet-bootstrap/start.sh"]
+      volumes:
+        - name: kismet-config
+          configMap:
+            name: kismet-config
+            defaultMode: 0755
+        - name: kismet-var
+          persistentVolumeClaim:
+            claimName: kismet-var-pvc
+        - name: kismet-log
+          persistentVolumeClaim:
+            claimName: kismet-log-pvc
+        - name: varrun
+          hostPath:
+            path: /var/run
+            type: Directory
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: sysclassnet
+          hostPath:
+            path: /sys/class/net
+            type: Directory
+        - name: usbdev
+          hostPath:
+            path: /dev/bus/usb
+            type: Directory
+        - name: net-tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kismet
+  labels:
+    app: kismet
+    app.watchgrid.io/name: kismet
+    app.watchgrid.io/managed-by: watchgrid
+    app.watchgrid.io/component: kismet
+spec:
+  selector:
+    app: kismet
+    app.watchgrid.io/name: kismet
+  ports:
+    - name: http
+      port: 2501
+      targetPort: 2501
+    - name: remote-capture
+      port: 3501
+      targetPort: 3501
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kismet-var-pvc
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kismet-log-pvc
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
