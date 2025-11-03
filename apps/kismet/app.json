@@ -1,0 +1,87 @@
+{
+  "name": "Kismet Wireless Sensor",
+  "description": "Deploy a Kismet wireless sensor node for RF monitoring and packet capture.",
+  "version": "v1.2",
+  "namespace": "default",
+  "author": "Watchgrid System",
+  "tags": ["kismet", "wireless", "rf", "monitoring", "sensor"],
+  "config_fields": [
+    {
+      "name": "HTTP_USERNAME",
+      "type": "string",
+      "description": "Web interface username for Kismet dashboard access.",
+      "default": "admin",
+      "required": true
+    },
+    {
+      "name": "HTTP_PASSWORD",
+      "type": "secret",
+      "description": "Web interface password for Kismet dashboard access.",
+      "default": "admin",
+      "required": true
+    },
+    {
+      "name": "GPS",
+      "type": "string",
+      "description": "GPS configuration. Use \"false\" to disable, or provide a full spec like \"serial:device=/dev/ttyUSB0,baud=9600\".",
+      "default": "false",
+      "required": false
+    },
+    {
+      "name": "HTTP_PORT",
+      "type": "number",
+      "description": "Port for the Kismet web interface.",
+      "default": 2501,
+      "required": true
+    },
+    {
+      "name": "REMOTE_CAPTURE_PORT",
+      "type": "number",
+      "description": "Port used for remote capture streaming.",
+      "default": 3501,
+      "required": true
+    },
+    {
+      "name": "ALLOW_REMOTE_CAPTURE",
+      "type": "boolean",
+      "description": "Allow remote capture connections (REST/streaming).",
+      "default": true,
+      "required": false
+    },
+    {
+      "name": "LOG_LEVEL",
+      "type": "string",
+      "description": "Set the logging verbosity level (INFO, DEBUG, WARN, ERROR).",
+      "default": "INFO",
+      "required": false
+    },
+    {
+      "name": "SOURCE0",
+      "type": "string",
+      "description": "Kismet source definition (e.g., \"source=wlan0:name=Source0,band24ghz=true\").",
+      "default": "source=wlan0:name=Source0,band24ghz=true",
+      "required": false
+    },
+    {
+      "name": "SOURCE1",
+      "type": "string",
+      "description": "Kismet source definition (e.g., \"source=wlan1:name=Source1,band5ghz=true,band6ghz=true\").",
+      "default": "source=wlan1:name=Source1,band5ghz=true,band6ghz=true",
+      "required": false
+    },
+    {
+      "name": "SOURCE2",
+      "type": "string",
+      "description": "Kismet source definition.",
+      "default": "source=wlan2:name=Source2",
+      "required": false
+    },
+    {
+      "name": "SOURCE3",
+      "type": "string",
+      "description": "Kismet source definition.",
+      "default": "source=wlan3:name=Source3",
+      "required": false
+    }
+  ]
+}
