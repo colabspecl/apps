@@ -1,0 +1,24 @@
+{
+  "name": "SDP",
+  "description": "SDR (Software Defined Radio) REST API monitoring application with real-time spectrum analysis and web interface for detecting and analyzing radio frequency signals",
+  "version": "1.0.0",
+  "namespace": "default",
+  "author": "WATCHGRID Team",
+  "tags": ["sdr", "radio", "spectrum", "monitoring"],
+  "requirements": {
+    "usb": "RTL-SDR/HackRF required for full functionality",
+    "privileged": true
+  },
+  "ports": {
+    "backend": 8000
+  },
+  "config_fields": [
+    {
+      "name": "SDR_DEVICE",
+      "type": "string",
+      "description": "Type of SDR: cwsim, rtlsdr, hackrf",
+      "default": "cwsim",
+      "required": true
+    },
+  "notes": "This application requires a connected HackRF/RTL-SDR USB device for radio spectrum analysis."
+}
