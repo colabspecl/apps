@@ -1,6 +1,6 @@
 {
   "name": "SDP",
-  "description": "SDR (Software Defined Radio) REST API monitoring application with real-time spectrum analysis and web interface for detecting and analyzing radio frequency signals",
+  "description": "A REST API based SDR (Software Defined Radio) monitoring application with real-time spectrum analysis and jamming detection.",
   "version": "1.0.0",
   "namespace": "default",
   "author": "WATCHGRID Team",
