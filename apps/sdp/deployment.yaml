@@ -62,6 +62,13 @@ spec:
               exec:
                 command: ["/bin/sh","-c","sleep 5"]
           securityContext:
+            sysctls:
+              - name: net.ipv4.tcp_keepalive_time
+                value: "60"
+              - name: net.ipv4.tcp_keepalive_intvl
+                value: "30"
+              - name: net.ipv4.tcp_keepalive_probes
+                value: "4"
             runAsUser: 0
             privileged: true
             capabilities:
