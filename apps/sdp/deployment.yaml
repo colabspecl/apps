@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sdr
+  labels:
+    app: sdr
+    app.watchgrid.io/name: sdp
+    app.watchgrid.io/managed-by: watchgrid
+    app.watchgrid.io/component: sdr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sdr
+      app.watchgrid.io/name: sdp
+  template:
+    metadata:
+      labels:
+        app: sdr
+        app.watchgrid.io/name: sdp
+        app.watchgrid.io/managed-by: watchgrid
+        app.watchgrid.io/component: sdr
+    spec:
+      containers:
+        - name: sdr
+          image: colabspecl/sdr:latest   # replace if you push your own build
+          imagePullPolicy: Always
+          workingDir: /app
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: SDR_DEVICE
+              value: cwsim
+          ports:
+            - containerPort: 8000
+              name: http
+            - containerPort: 5555
+              name: fft
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            # Compose start_period: 30s approximated here
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: usbdev
+              mountPath: /dev/bus/usb
+      volumes:
+        - name: usbdev
+          hostPath:
+            path: /dev/bus/usb
+            type: Directory
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sdr
+  labels:
+    app: sdr
+    app.watchgrid.io/name: sdp
+    app.watchgrid.io/managed-by: watchgrid
+    app.watchgrid.io/component: sdr
+spec:
+  selector:
+    app: sdr
+    app.watchgrid.io/name: sdp
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+    - name: fft
+      port: 5555
+      targetPort: 5555
+  type: ClusterIP
