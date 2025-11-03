@@ -1,3 +1,19 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shadowpulse-pvc
+  # namespace: default   # uncomment & set if you're not in "default"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+  storageClassName: local-path
+  volumeMode: Filesystem
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -103,32 +119,3 @@ spec:
       port: 5555
       targetPort: 5555
   type: ClusterIP
-
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: shadowpulse-pv
-  labels:
-    type: local
-spec:
-  capacity:
-    storage: 10Mi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: /mnt/shadowpulse-data
-  persistentVolumeReclaimPolicy: Retain
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: shadowpulse-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Mi
-  volumeName: shadowpulse-pv
