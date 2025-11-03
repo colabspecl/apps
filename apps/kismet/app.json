@@ -1,5 +1,5 @@
 {
-  "name": "Kismet Wireless Sensor",
+  "name": "Kismet",
   "description": "Deploy a Kismet wireless sensor node for RF monitoring and packet capture.",
   "version": "v1.2",
   "namespace": "default",
@@ -31,14 +31,14 @@
       "name": "HTTP_PORT",
       "type": "number",
       "description": "Port for the Kismet web interface.",
-      "default": 2501,
+      "default": "2501",
       "required": true
     },
     {
       "name": "REMOTE_CAPTURE_PORT",
       "type": "number",
       "description": "Port used for remote capture streaming.",
-      "default": 3501,
+      "default": "3501",
       "required": true
     },
     {
@@ -59,28 +59,28 @@
       "name": "SOURCE0",
       "type": "string",
       "description": "Kismet source definition (e.g., \"source=wlan0:name=Source0,band24ghz=true\").",
-      "default": "source=wlan0:name=Source0,band24ghz=true",
+      "default": "source=wlan0:name=wlan0,band24ghz=true",
       "required": false
     },
     {
       "name": "SOURCE1",
       "type": "string",
       "description": "Kismet source definition (e.g., \"source=wlan1:name=Source1,band5ghz=true,band6ghz=true\").",
-      "default": "source=wlan1:name=Source1,band5ghz=true,band6ghz=true",
+      "default": "source=wlan1:name=wlan1,band5ghz=true,band6ghz=true",
       "required": false
     },
     {
       "name": "SOURCE2",
       "type": "string",
       "description": "Kismet source definition.",
-      "default": "source=wlan2:name=Source2",
+      "default": "source=wlan2:name=wlan2",
       "required": false
     },
     {
       "name": "SOURCE3",
       "type": "string",
       "description": "Kismet source definition.",
-      "default": "source=wlan3:name=Source3",
+      "default": "source=wlan3:name=wlan3",
       "required": false
     }
   ]
