@@ -21,13 +21,9 @@ spec:
         app.watchgrid.io/managed-by: watchgrid
         app.watchgrid.io/component: sdr
       annotations:
-        # Compose: security_opt: apparmor:unconfined
+        # Allow USB device access similar to docker-compose: security_opt: apparmor:unconfined
         container.apparmor.security.beta.kubernetes.io/sdr: unconfined
     spec:
-      # Compose: devices + group_add plugdev
-      securityContext:
-        # plugdev commonly GID 46 on Debian/Ubuntu; adjust for your host if different
-        supplementalGroups: [46]
       containers:
         - name: sdr
           image: colabspecl/sdr:latest   # replace if you push your own build
@@ -37,11 +33,7 @@ spec:
             - name: PYTHONUNBUFFERED
               value: "1"
             - name: SDR_DEVICE
-              value: rtlsdr
-              # - name: SDR_DEVICE
-              #   value: hackrf
-              # - name: SDR_DEVICE
-              #   value: cwsim
+              value: "HackRF"   # match working manifest casing
           ports:
             - containerPort: 8000
               name: http
@@ -68,10 +60,11 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
           securityContext:
-            # Compose: cap_add: [SYS_RAWIO]; no full privileged container
-            allowPrivilegeEscalation: false
+            runAsUser: 0
+            privileged: true              # required for HackRF/libusb access
             capabilities:
-              add: ["SYS_RAWIO"]
+              add:
+                - NET_ADMIN               # mirrored from your working manifest
           volumeMounts:
             - name: usbdev
               mountPath: /dev/bus/usb
